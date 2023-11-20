@@ -21,6 +21,10 @@ impl Bus {
     pub fn ram_read_byte(&mut self, addr: u16, value: u8) {
         self.ram.read_byte(addr, value)
     }
+
+    pub fn display_clear(&mut self) {
+        self.display.clear();
+    }
 }
 
 /// For printing values

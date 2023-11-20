@@ -1,5 +1,5 @@
 /// storing fonts on meomory
-/// chip-8 have 16 fonts which are 5 bites long
+/// chip-8 have 16 fonts which are 5 bytes long
 /// they are used for displaying characters on screen
 pub const FONT_SET: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0

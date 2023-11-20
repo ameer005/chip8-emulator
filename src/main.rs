@@ -14,5 +14,7 @@ fn main() {
     file.read_to_end(&mut data).unwrap();
 
     let mut chip = chip8::Chip8::init();
-    chip.load_rom(data)
+    chip.load_rom(data);
+
+    chip.exec_instructions(0x2345);
 }
