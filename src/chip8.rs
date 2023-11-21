@@ -60,11 +60,109 @@ impl Chip8 {
 
             /// 3xkk
             0x3 => {
-                let vx = opcode & 0x0F00;
+                let vx = (opcode & 0x0F00) >> 8;
                 let kk = opcode & 0x00FF;
 
                 if self.cpu.get_vreg_value(vx as u8) == kk as u8 {
                     self.cpu.update_pc(self.cpu.get_pc() + 2)
+                }
+            }
+
+            /// Skip next instruction if Vx != kk.
+            0x4 => {
+                let vx = (opcode & 0x0F00) >> 8;
+                let kk = opcode & 0x00FF;
+
+                if self.cpu.get_vreg_value(vx as u8) != kk as u8 {
+                    self.cpu.update_pc(self.cpu.get_pc() + 2)
+                }
+            }
+
+            /// Skip next instruction if Vx = Vy
+            0x5 => {
+                let vx = (opcode & 0x0F00) >> 8;
+                let vy = (opcode & 0x00F0) >> 4;
+
+                if self.cpu.get_vreg_value(vx as u8) == self.cpu.get_vreg_value(vy as u8) {
+                    self.cpu.update_pc(self.cpu.get_pc() + 2);
+                }
+            }
+
+            ///Set Vx = kk
+            0x6 => {
+                let vx = (opcode & 0x0F00) >> 8;
+                let value = opcode & 0x00ff;
+
+                self.cpu.set_vreg_value(vx as u8, value as u8)
+            }
+
+            ///Set Vx = Vx + kk.
+            0x7 => {
+                let vx = ((opcode & 0x0F00) >> 8) as u8;
+                let value = opcode & 0x00ff;
+
+                self.cpu
+                    .set_vreg_value(vx, self.cpu.get_vreg_value(vx) + value as u8)
+            }
+
+            /// Nested
+            0x8 => {
+                let op8 = opcode & 0x000F;
+
+                match op8 {
+                    /// Set Vx = Vy.
+                    0x0 => {
+                        let vx = ((opcode & 0x0F00) >> 8) as u8;
+                        let vy = ((opcode & 0x00F0) >> 4) as u8;
+
+                        self.cpu.set_vreg_value(vx, self.cpu.get_vreg_value(vy));
+                    }
+
+                    // Set Vx = Vx OR Vy
+                    0x1 => {
+                        let vx = ((opcode & 0x0F00) >> 8) as u8;
+                        let vy = ((opcode & 0x00F0) >> 4) as u8;
+
+                        let value = self.cpu.get_vreg_value(vx) | self.cpu.get_vreg_value(vy);
+
+                        self.cpu.set_vreg_value(vx, value);
+                    }
+
+                    /// Set Vx = Vx AND Vy.
+                    0x2 => {
+                        let vx = ((opcode & 0x0F00) >> 8) as u8;
+                        let vy = ((opcode & 0x00F0) >> 4) as u8;
+
+                        let value = self.cpu.get_vreg_value(vx) & self.cpu.get_vreg_value(vy);
+
+                        self.cpu.set_vreg_value(vx, value);
+                    }
+
+                    /// Set Vx = Vx XOR Vy.
+                    0x3 => {
+                        let vx = ((opcode & 0x0F00) >> 8) as u8;
+                        let vy = ((opcode & 0x00F0) >> 4) as u8;
+
+                        let value = self.cpu.get_vreg_value(vx) ^ self.cpu.get_vreg_value(vy);
+
+                        self.cpu.set_vreg_value(vx, value);
+                    }
+
+                    ///Set Vx = Vx + Vy, set VF = carry.
+                    0x4 => {
+                        let vx = ((opcode & 0x0F00) >> 8) as u8;
+                        let vy = ((opcode & 0x00F0) >> 4) as u8;
+
+                        let result =
+                            self.cpu.get_vreg_value(vx) as u16 + self.cpu.get_vreg_value(vy) as u16;
+
+                        let vf = if result > 255 { 1 } else { 0 };
+
+                        self.cpu.set_vreg_value(0xF, vf);
+                        self.cpu.set_vreg_value(vx, (result & 0x00ff) as u8);
+                    }
+
+                    _ => println!("unknown opcode"),
                 }
             }
 
@@ -125,13 +223,183 @@ mod chip8_tests {
 
         //mock
         let opcode: u16 = 0x3242;
-        let vx = opcode & 0x0F00;
+        let vx = (opcode & 0x0F00) >> 8;
+        let kk = opcode & 0x00FF;
+        chip8.cpu.update_pc(0x2000);
+
+        // kk is not equal to the value at Vx register
+        chip8.cpu.set_vreg_value(vx as u8, (kk + 1) as u8);
+        chip8.exec_instructions(opcode);
+        assert_eq!(chip8.cpu.get_pc(), 0x2000);
+
+        // if kk is equal to the value at Vx register
+        chip8.cpu.set_vreg_value(vx as u8, kk as u8);
+        chip8.exec_instructions(opcode);
+        assert_eq!(chip8.cpu.get_pc(), 0x2000 + 2);
+    }
+
+    #[test]
+    fn test_4xkk() {
+        let mut chip8 = Chip8::init();
+
+        //testing if kk is equal to value at reg Vx
+        //mock
+        let opcode: u16 = 0x4000;
+        let vx = (opcode & 0x0F00) >> 8;
         let kk = opcode & 0x00FF;
 
         chip8.cpu.set_vreg_value(vx as u8, kk as u8);
         chip8.cpu.update_pc(0x2000);
         chip8.exec_instructions(opcode);
+        assert_eq!(chip8.cpu.get_pc(), 0x2000);
 
+        //if kk is not equal to register at vx
+        chip8.cpu.set_vreg_value(vx as u8, (kk + 2) as u8);
+        chip8.exec_instructions(opcode);
         assert_eq!(chip8.cpu.get_pc(), 0x2000 + 2);
+    }
+
+    #[test]
+    fn test_5xy0() {
+        let mut chip8 = Chip8::init();
+        let opcode = 0x5370;
+        let vx = (opcode & 0x0F00) >> 8;
+        let vy = (opcode & 0x00F0) >> 4;
+        chip8.cpu.update_pc(0x2000);
+
+        //if Vx is not equal to Vy
+        chip8.cpu.set_vreg_value(vx as u8, 5);
+        chip8.cpu.set_vreg_value(vy as u8, 8);
+        chip8.exec_instructions(opcode);
+        assert_eq!(chip8.cpu.get_pc(), 0x2000, "should not be equal");
+
+        //if Vx is equal to Vy
+        chip8.cpu.set_vreg_value(vx as u8, 5);
+        chip8.cpu.set_vreg_value(vy as u8, 5);
+        chip8.exec_instructions(opcode);
+        assert_eq!(chip8.cpu.get_pc(), 0x2000 + 2, "should be equal");
+    }
+
+    #[test]
+    fn test_6xkk() {
+        let mut chip8 = Chip8::init();
+        let opcode = 0x65CD;
+
+        let vx = (opcode & 0x0F00) >> 8;
+        let value = opcode & 0x00ff;
+
+        chip8.exec_instructions(opcode);
+        assert_eq!(chip8.cpu.get_vreg_value(vx as u8), value as u8);
+    }
+
+    #[test]
+    fn test_7xkk() {
+        let mut chip8 = Chip8::init();
+        let opcode = 0x7242;
+        let vx = (opcode & 0x0F00) >> 8;
+        let value = opcode & 0x00ff;
+
+        chip8.cpu.set_vreg_value(vx as u8, 4);
+        chip8.exec_instructions(opcode);
+        assert_eq!(chip8.cpu.get_vreg_value(vx as u8), value as u8 + 4);
+    }
+
+    #[test]
+    fn test_8xy0() {
+        let mut chip8 = Chip8::init();
+        let opcode: u16 = 0x8370;
+        let vx = ((opcode & 0x0F00) >> 8) as u8;
+        let vy = ((opcode & 0x00F0) >> 4) as u8;
+
+        chip8.cpu.set_vreg_value(vy, 8);
+        chip8.exec_instructions(opcode);
+
+        assert_eq!(chip8.cpu.get_vreg_value(vx), 8);
+    }
+
+    #[test]
+    fn test_8xy1() {
+        let mut chip8 = Chip8::init();
+        let opcode: u16 = 0x8371;
+        let vx = ((opcode & 0x0F00) >> 8) as u8;
+        let vy = ((opcode & 0x00F0) >> 4) as u8;
+
+        chip8.cpu.set_vreg_value(vx, 30);
+        chip8.cpu.set_vreg_value(vy, 100);
+
+        let value = chip8.cpu.get_vreg_value(vx) | chip8.cpu.get_vreg_value(vy);
+
+        chip8.exec_instructions(opcode);
+        assert_eq!(chip8.cpu.get_vreg_value(vx), value);
+    }
+
+    #[test]
+    fn test_8xy2() {
+        let mut chip8 = Chip8::init();
+        let opcode: u16 = 0x8372;
+        let vx = ((opcode & 0x0F00) >> 8) as u8;
+        let vy = ((opcode & 0x00F0) >> 4) as u8;
+
+        chip8.cpu.set_vreg_value(vx, 30);
+        chip8.cpu.set_vreg_value(vy, 100);
+
+        let value = chip8.cpu.get_vreg_value(vx) & chip8.cpu.get_vreg_value(vy);
+
+        chip8.exec_instructions(opcode);
+        assert_eq!(chip8.cpu.get_vreg_value(vx), value);
+    }
+
+    #[test]
+    fn test_8xy3() {
+        let mut chip8 = Chip8::init();
+        let opcode: u16 = 0x8373;
+        let vx = ((opcode & 0x0F00) >> 8) as u8;
+        let vy = ((opcode & 0x00F0) >> 4) as u8;
+
+        chip8.cpu.set_vreg_value(vx, 30);
+        chip8.cpu.set_vreg_value(vy, 100);
+
+        let value = chip8.cpu.get_vreg_value(vx) ^ chip8.cpu.get_vreg_value(vy);
+
+        chip8.exec_instructions(opcode);
+        assert_eq!(chip8.cpu.get_vreg_value(vx), value);
+    }
+
+    #[test]
+    fn test_8xy4_carry() {
+        let mut chip8 = Chip8::init();
+        let opcode: u16 = 0x8374;
+        let vx = ((opcode & 0x0F00) >> 8) as u8;
+        let vy = ((opcode & 0x00F0) >> 4) as u8;
+
+        chip8.cpu.set_vreg_value(vx, 200);
+        chip8.cpu.set_vreg_value(vy, 100);
+
+        let result = chip8.cpu.get_vreg_value(vx) as u16 + chip8.cpu.get_vreg_value(vy) as u16;
+
+        let vf = if result > 255 { 1 } else { 0 };
+
+        chip8.exec_instructions(opcode);
+        assert_eq!(chip8.cpu.get_vreg_value(vx), (result & 0x00ff) as u8);
+        assert_eq!(chip8.cpu.get_vreg_value(0xF), 1, "should be 1")
+    }
+
+    #[test]
+    fn test_8xy4_nocarry() {
+        let mut chip8 = Chip8::init();
+        let opcode: u16 = 0x8374;
+        let vx = ((opcode & 0x0F00) >> 8) as u8;
+        let vy = ((opcode & 0x00F0) >> 4) as u8;
+
+        chip8.cpu.set_vreg_value(vx, 20);
+        chip8.cpu.set_vreg_value(vy, 100);
+
+        let result = chip8.cpu.get_vreg_value(vx) as u16 + chip8.cpu.get_vreg_value(vy) as u16;
+
+        let vf = if result > 255 { 1 } else { 0 };
+
+        chip8.exec_instructions(opcode);
+        assert_eq!(chip8.cpu.get_vreg_value(vx), (result & 0x00ff) as u8);
+        assert_eq!(chip8.cpu.get_vreg_value(0xF), 0, "should be 0")
     }
 }
