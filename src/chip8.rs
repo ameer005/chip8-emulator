@@ -1,4 +1,5 @@
-use crate::{bus, cpu};
+use crate::{bus, cpu, display};
+use rand::prelude::*;
 
 pub struct Chip8 {
     cpu: cpu::CPU,
@@ -167,6 +168,7 @@ impl Chip8 {
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
                         let vy = ((opcode & 0x00F0) >> 4) as u8;
 
+                        // THINK :- might want to clamp it to zero if it goes below then 0
                         let value = self
                             .cpu
                             .get_vreg_value(vx)
@@ -200,6 +202,7 @@ impl Chip8 {
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
                         let vy = ((opcode & 0x00F0) >> 4) as u8;
 
+                        // THINK :- might want to clamp it to zero if it goes below then 0
                         let value = self
                             .cpu
                             .get_vreg_value(vy)
@@ -230,9 +233,93 @@ impl Chip8 {
                 }
             }
 
+            /// Skip next instruction if Vx != Vy.
+            0x9 => {
+                let vx = ((opcode & 0x0F00) >> 8) as u8;
+                let vy = ((opcode & 0x00F0) >> 4) as u8;
+
+                if self.cpu.get_vreg_value(vx) != self.cpu.get_vreg_value(vy) {
+                    self.cpu.update_pc(self.cpu.get_pc() + 2);
+                }
+            }
+
+            /// Set I = nnn.
+            0xA => self.cpu.set_i_reg_value(opcode & 0x0FFF),
+
+            /// Jump to location nnn + V0.
+            0xB => {
+                let addr = self.cpu.get_vreg_value(0) as u16 + (opcode & 0x0FFF);
+                self.cpu.update_pc(addr);
+            }
+
+            /// Set Vx = random byte AND kk.
+            0xC => {
+                let vx = ((opcode & 0x0F00) >> 8) as u8;
+                let value = gen_random_byte() & (opcode & 0x00FF) as u8;
+
+                self.cpu.set_vreg_value(vx, value);
+            }
+
+            /// Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision.
+            0xD => {
+                let vx = ((opcode & 0x0F00) >> 8) as u8;
+                let vy = ((opcode & 0x00F0) >> 4) as u8;
+                let nn = (opcode & 0x000F) as u8;
+
+                let x_reg = self.cpu.get_vreg_value(vx);
+                let y_reg = self.cpu.get_vreg_value(vy);
+                let i_addr = self.cpu.get_i_reg_value();
+
+                // reading n bytes from memory starting at i_addr
+                for row in 0..nn {
+                    // extracting bytes one by one
+                    let sprite_byte = self.bus.ram_read_byte(i_addr + row as u16);
+
+                    // each byte is made up of 8 bits. it loop over each bytes
+                    // XOR each pixel. it means if the current pixel is 1 it will set it to zero
+                    for col in 0..8 {
+                        // modulo operator dealing with oveflowing. it used to wrap the value.
+                        let pixel_x = (x_reg + col) % display::DISPLAY_WIDTH as u8;
+                        let pixel_y = (y_reg + row) % display::DISPLAY_HEIGHT as u8;
+
+                        // basic way to get correct coordinates from 1d array
+                        let index = pixel_x as usize + pixel_y as usize * display::DISPLAY_WIDTH;
+                        let current_pixel = self.bus.display_get_pixel(index);
+
+                        // XOR each bit with current pixel and updating the display
+                        let value = current_pixel ^ (sprite_byte as u32 >> (7 - col)) & 0x1;
+                        self.bus.display_write_pixel(index, value);
+
+                        if value == 1 {
+                            self.cpu.set_vreg_value(0xF, 1);
+                        }
+                    }
+                }
+            }
+
+            /// Skip next instruction if key with the value of Vx is pressed.
+            0xE => match (opcode & 0x00FF) {
+                0x9E => {
+                    let vx = ((opcode & 0x0F00) >> 8) as u8;
+                    let x_reg = self.cpu.get_vreg_value(vx);
+                }
+
+                0xA1 => {
+                    let vx = ((opcode & 0x0F00) >> 8) as u8;
+                    let x_reg = self.cpu.get_vreg_value(vx);
+                }
+
+                _ => println!("unknown opcode"),
+            },
+
             _ => println!("Unknown opcode"),
         }
     }
+}
+
+fn gen_random_byte() -> u8 {
+    let mut rng = rand::thread_rng();
+    rng.gen_range(0..=255)
 }
 
 // Test
@@ -588,5 +675,45 @@ mod chip8_tests {
 
         assert_eq!(chip8.cpu.get_vreg_value(0xF), 0, "0xF should be 0");
         assert_eq!(chip8.cpu.get_vreg_value(vx), 80 << 1)
+    }
+
+    #[test]
+    fn test_9xy0() {
+        let mut chip8 = Chip8::init();
+        let opcode: u16 = 0x9B20;
+        let vx = ((opcode & 0x0F00) >> 8) as u8;
+        let vy = ((opcode & 0x00F0) >> 4) as u8;
+
+        chip8.cpu.set_vreg_value(vx, 10);
+        chip8.cpu.set_vreg_value(vy, 10);
+
+        chip8.exec_instructions(opcode);
+        assert_eq!(chip8.cpu.get_pc(), 0x200, "Program counter should be zero");
+
+        chip8.cpu.set_vreg_value(vy, 12);
+        chip8.exec_instructions(opcode);
+
+        assert_eq!(chip8.cpu.get_pc(), 0x200 + 2, "Program counter should be 2");
+    }
+
+    #[test]
+    fn test_annn() {
+        let mut chip8 = Chip8::init();
+        let opcode: u16 = 0xAB20;
+
+        chip8.exec_instructions(opcode);
+        assert_eq!(chip8.cpu.get_i_reg_value(), opcode & 0x0FFF);
+    }
+
+    #[test]
+    fn test_bnnn() {
+        let mut chip8 = Chip8::init();
+        let opcode: u16 = 0xB300;
+
+        chip8.cpu.set_vreg_value(0, 10);
+        let val = 10 + (opcode & 0x0FFF);
+        chip8.exec_instructions(opcode);
+
+        assert_eq!(chip8.cpu.get_pc(), val);
     }
 }

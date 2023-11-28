@@ -49,6 +49,10 @@ impl CPU {
         self.program_counter = val;
     }
 
+    pub fn incremen_pc(&mut self) {
+        self.program_counter += 2;
+    }
+
     /// V registers
     pub fn set_vreg_value(&mut self, index: u8, val: u8) {
         self.v_regs[index as usize] = val;
@@ -56,6 +60,10 @@ impl CPU {
 
     pub fn get_vreg_value(&self, index: u8) -> u8 {
         self.v_regs[index as usize]
+    }
+
+    pub fn set_i_reg_value(&mut self, value: u16) {
+        self.i_reg = value;
     }
 }
 
@@ -67,5 +75,9 @@ impl CPU {
 
     pub fn get_pc(&self) -> u16 {
         self.program_counter
+    }
+
+    pub fn get_i_reg_value(&self) -> u16 {
+        self.i_reg
     }
 }
