@@ -4,6 +4,7 @@ use crate::ram;
 pub struct Bus {
     ram: ram::RAM,
     display: display::Display,
+    keypad: [bool; 16],
 }
 
 impl Bus {
@@ -11,10 +12,12 @@ impl Bus {
         Bus {
             ram: ram::RAM::init(),
             display: display::Display::init(),
+            keypad: [false; 16],
         }
     }
 
-    pub fn ram_write_byte(&mut self, addr: usize, value: u8) {
+    // Memory
+    pub fn ram_write_byte(&mut self, addr: u16, value: u8) {
         self.ram.write_byte(addr, value)
     }
 
@@ -22,6 +25,7 @@ impl Bus {
         self.ram.read_byte(addr)
     }
 
+    // Display
     pub fn display_clear(&mut self) {
         self.display.clear();
     }
@@ -32,6 +36,15 @@ impl Bus {
 
     pub fn display_write_pixel(&mut self, index: usize, value: u32) {
         self.display.write_pixel(index, value);
+    }
+
+    // Keyboard
+    pub fn is_key_pressed(&self, index: usize) -> bool {
+        self.keypad[index]
+    }
+
+    pub fn handle_key_press(&mut self, index: usize, state: bool) {
+        self.keypad[index] = state;
     }
 }
 

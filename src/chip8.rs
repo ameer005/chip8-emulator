@@ -1,9 +1,17 @@
 use crate::{bus, cpu, display};
 use rand::prelude::*;
 
+#[derive(Eq, PartialEq)]
+pub enum EmulatorState {
+    Quit,
+    Running,
+    PAUSED,
+}
+
 pub struct Chip8 {
     cpu: cpu::CPU,
     bus: bus::Bus,
+    pub state: EmulatorState,
 }
 
 impl Chip8 {
@@ -11,6 +19,7 @@ impl Chip8 {
         Chip8 {
             cpu: cpu::CPU::init(),
             bus: bus::Bus::init(),
+            state: EmulatorState::Running,
         }
     }
 
@@ -18,10 +27,14 @@ impl Chip8 {
         let offset = cpu::EXECUTION_INDEX;
 
         for (i, val) in data.into_iter().enumerate() {
-            self.bus.ram_write_byte(offset as usize + i, val)
+            self.bus.ram_write_byte(offset as u16 + i as u16, val)
         }
 
         // self.bus.ram_print()
+    }
+
+    pub fn change_state(&mut self, state: EmulatorState) {
+        self.state = state
     }
 
     pub fn exec_instructions(&mut self, opcode: u16) {
@@ -298,19 +311,119 @@ impl Chip8 {
             }
 
             /// Skip next instruction if key with the value of Vx is pressed.
-            0xE => match (opcode & 0x00FF) {
-                0x9E => {
-                    let vx = ((opcode & 0x0F00) >> 8) as u8;
-                    let x_reg = self.cpu.get_vreg_value(vx);
-                }
+            0xE => {
+                let op_e = opcode & 0x000F;
+                match op_e {
+                    0xE => {
+                        let vx = ((opcode & 0x0F00) >> 8) as u8;
+                        let x_reg = self.cpu.get_vreg_value(vx);
 
-                0xA1 => {
-                    let vx = ((opcode & 0x0F00) >> 8) as u8;
-                    let x_reg = self.cpu.get_vreg_value(vx);
-                }
+                        if self.bus.is_key_pressed(x_reg as usize) {
+                            self.cpu.increment_pc();
+                        }
+                    }
 
-                _ => println!("unknown opcode"),
-            },
+                    0x1 => {
+                        let vx = ((opcode & 0x0F00) >> 8) as u8;
+                        let x_reg = self.cpu.get_vreg_value(vx);
+
+                        if !self.bus.is_key_pressed(x_reg as usize) {
+                            self.cpu.increment_pc();
+                        }
+                    }
+
+                    _ => println!("unknown opcode"),
+                }
+            }
+
+            0xF => {
+                let op_e = opcode & 0x00FF;
+                match op_e {
+                    /// Set Vx = delay timer value.
+                    0x07 => {
+                        let vx = ((opcode & 0x0F00) >> 8) as u8;
+
+                        self.cpu.set_vreg_value(vx, self.cpu.get_delay_timer());
+                    }
+
+                    /// Wait for a key press, store the value of the key in Vx.
+                    0x0A => {}
+
+                    /// Set delay timer = Vx.
+                    0x15 => {
+                        let vx = ((opcode & 0x0F00) >> 8) as u8;
+                        self.cpu.set_delay_timer(self.cpu.get_vreg_value(vx));
+                    }
+
+                    ///Set sound timer = Vx.
+                    0x18 => {
+                        let vx = ((opcode & 0x0F00) >> 8) as u8;
+                        self.cpu.set_sound_timer(self.cpu.get_vreg_value(vx));
+                    }
+
+                    /// Set I = I + Vx.
+                    0x1E => {
+                        let vx = ((opcode & 0x0F00) >> 8) as u8;
+
+                        self.cpu.set_i_reg_value(
+                            self.cpu
+                                .get_i_reg_value()
+                                .wrapping_add(self.cpu.get_vreg_value(vx) as u16),
+                        )
+                    }
+
+                    /// Set I = location of sprite for digit Vx.
+                    0x29 => {
+                        let vx = ((opcode & 0x0F00) >> 8) as u8;
+
+                        let digit = self.cpu.get_vreg_value(vx);
+
+                        self.cpu
+                            .set_i_reg_value(crate::ram::FONTSET_START_ADDRESS + (5 * digit) as u16)
+                    }
+
+                    /// Store BCD representation of Vx in memory locations I, I+1, and I+2.
+                    0x33 => {
+                        let vx = ((opcode & 0x0F00) >> 8) as u8;
+                        let value = self.cpu.get_vreg_value(vx);
+
+                        // Extract hundreds, tens, and units digits
+                        let hundreds = value / 100;
+                        let tens = (value / 10) % 10;
+                        let units = value % 10;
+
+                        let i_reg = self.cpu.get_i_reg_value();
+
+                        self.bus.ram_write_byte(i_reg, hundreds);
+                        self.bus.ram_write_byte(i_reg + 1, tens);
+                        self.bus.ram_write_byte(i_reg + 2, units);
+                    }
+
+                    /// Store registers V0 through Vx in memory starting at location I.
+                    0x55 => {
+                        let vx = ((opcode & 0x0F00) >> 8) as u8;
+                        let i_reg = self.cpu.get_i_reg_value();
+
+                        for i in 0..vx {
+                            self.bus
+                                .ram_write_byte(i_reg + i as u16, self.cpu.get_vreg_value(i));
+                        }
+                    }
+
+                    /// Read registers V0 through Vx from memory starting at location I.
+                    0x65 => {
+                        let vx = ((opcode & 0x0F00) >> 8) as u8;
+                        let i_reg = self.cpu.get_i_reg_value();
+
+                        for i in 0..vx {
+                            self.cpu
+                                .set_vreg_value(i, self.bus.ram_read_byte(i_reg + i as u16))
+                        }
+                    }
+
+                    _ => println!("unknown opcode"),
+                }
+            }
 
             _ => println!("Unknown opcode"),
         }
@@ -715,5 +828,62 @@ mod chip8_tests {
         chip8.exec_instructions(opcode);
 
         assert_eq!(chip8.cpu.get_pc(), val);
+    }
+
+    #[test]
+    fn test_ex9e() {
+        let mut chip8 = Chip8::init();
+        let opcode: u16 = 0xE22E;
+
+        let vx = ((opcode & 0x0F00) >> 8) as u8;
+        chip8.cpu.set_vreg_value(vx, 2);
+        chip8.bus.handle_key_press(2, true);
+
+        let pc = chip8.cpu.get_pc();
+        chip8.exec_instructions(opcode);
+
+        assert_eq!(
+            chip8.bus.is_key_pressed(2),
+            true,
+            "key pressed must be true"
+        );
+
+        assert_eq!(
+            chip8.cpu.get_pc(),
+            pc + 2,
+            "program counter must increase by 2"
+        );
+
+        // testing for false condition
+        chip8.cpu.set_vreg_value(vx, 3);
+        chip8.exec_instructions(opcode);
+        assert_eq!(chip8.cpu.get_pc(), pc + 2, "PC must stay the same");
+    }
+
+    #[test]
+    fn test_ex9a() {
+        let mut chip8 = Chip8::init();
+        let opcode: u16 = 0xE221;
+
+        let vx = ((opcode & 0x0F00) >> 8) as u8;
+        chip8.cpu.set_vreg_value(vx, 2);
+        let pc = chip8.cpu.get_pc();
+        chip8.exec_instructions(opcode);
+
+        assert_eq!(
+            chip8.bus.is_key_pressed(2),
+            false,
+            "key pressed must be true"
+        );
+
+        assert_eq!(
+            chip8.cpu.get_pc(),
+            pc + 2,
+            "program counter must increase by 2"
+        );
+
+        chip8.bus.handle_key_press(2, true);
+        chip8.exec_instructions(opcode);
+        assert_eq!(chip8.cpu.get_pc(), pc + 2, "PC must stay the same");
     }
 }

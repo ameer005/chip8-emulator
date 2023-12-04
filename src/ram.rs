@@ -1,6 +1,7 @@
 /// storing fonts on meomory
 /// chip-8 have 16 fonts which are 5 bytes long
 /// they are used for displaying characters on screen
+pub const FONTSET_START_ADDRESS: u16 = 0x50;
 pub const FONT_SET: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
     0x20, 0x60, 0x20, 0x20, 0x70, // 1
@@ -36,8 +37,8 @@ impl RAM {
         self.memory[addr as usize]
     }
 
-    pub fn write_byte(&mut self, addr: usize, value: u8) {
-        self.memory[addr] = value;
+    pub fn write_byte(&mut self, addr: u16, value: u8) {
+        self.memory[addr as usize] = value;
     }
 
     pub fn print_memory(&self) {
@@ -49,7 +50,7 @@ impl RAM {
 impl RAM {
     fn load_fonts(&mut self) {
         for (i, &font) in FONT_SET.iter().enumerate() {
-            self.write_byte(i, font);
+            self.write_byte(FONTSET_START_ADDRESS + i as u16, font);
         }
     }
 }

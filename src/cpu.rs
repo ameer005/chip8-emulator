@@ -49,7 +49,8 @@ impl CPU {
         self.program_counter = val;
     }
 
-    pub fn incremen_pc(&mut self) {
+    // increment program counter by two
+    pub fn increment_pc(&mut self) {
         self.program_counter += 2;
     }
 
@@ -62,8 +63,17 @@ impl CPU {
         self.v_regs[index as usize]
     }
 
+    /// I register
     pub fn set_i_reg_value(&mut self, value: u16) {
         self.i_reg = value;
+    }
+
+    pub fn set_delay_timer(&mut self, value: u8) {
+        self.delay_reg = value;
+    }
+
+    pub fn set_sound_timer(&mut self, value: u8) {
+        self.sound_reg = value;
     }
 }
 
@@ -79,5 +89,9 @@ impl CPU {
 
     pub fn get_i_reg_value(&self) -> u16 {
         self.i_reg
+    }
+
+    pub fn get_delay_timer(&self) -> u8 {
+        self.delay_reg
     }
 }
