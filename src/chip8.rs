@@ -37,6 +37,22 @@ impl Chip8 {
         self.state = state
     }
 
+    pub fn get_video_buffer(&self) -> &[u32] {
+        self.bus.display_get_buffer()
+    }
+
+    pub fn run(&mut self) {
+        let first_byte = self.bus.ram_read_byte(self.cpu.get_pc()) as u16;
+        let second_byte = self.bus.ram_read_byte(self.cpu.get_pc() + 1) as u16;
+
+        let opcode = (first_byte << 8) | second_byte;
+
+        // println!("{}", format!("{:X}", opcode));
+        self.cpu.increment_pc();
+
+        self.exec_instructions(opcode);
+    }
+
     pub fn exec_instructions(&mut self, opcode: u16) {
         let left_nibble = (opcode & 0xF000) >> 12;
 
@@ -296,7 +312,7 @@ impl Chip8 {
                         let pixel_y = (y_reg + row) % display::DISPLAY_HEIGHT as u8;
 
                         // basic way to get correct coordinates from 1d array
-                        let index = pixel_x as usize + pixel_y as usize * display::DISPLAY_WIDTH;
+                        let index = pixel_x as usize + (pixel_y as usize * display::DISPLAY_WIDTH);
                         let current_pixel = self.bus.display_get_pixel(index);
 
                         // XOR each bit with current pixel and updating the display
@@ -308,6 +324,8 @@ impl Chip8 {
                         }
                     }
                 }
+
+                // println!("{:?}", self.bus.display_get_buffer())
             }
 
             /// Skip next instruction if key with the value of Vx is pressed.

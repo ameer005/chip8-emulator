@@ -6,6 +6,7 @@ use sdl2::{
     event::{self, Event},
     keyboard::Keycode,
     pixels::Color,
+    rect::Rect,
     render::Canvas,
     video::Window,
     Sdl,
@@ -59,12 +60,24 @@ impl SDLHandler {
             match event {
                 Event::Quit { .. } => emulator.change_state(EmulatorState::Quit),
 
-                Event::KeyUp { .. } => {}
+                Event::KeyUp {
+                    keycode: Some(key), ..
+                } => {}
 
                 Event::KeyDown {
                     keycode: Some(key), ..
                 } => match key {
                     Keycode::Escape => emulator.change_state(EmulatorState::Quit),
+
+                    Keycode::Space => {
+                        if emulator.state == EmulatorState::Running {
+                            emulator.change_state(EmulatorState::PAUSED);
+                            println!("=== PAUSED ====")
+                        } else {
+                            emulator.change_state(EmulatorState::Running);
+                            println!("=== RUNNING ====")
+                        }
+                    }
 
                     _ => println!("unknown key"),
                 },
@@ -86,5 +99,40 @@ impl SDLHandler {
         self.canvas.present();
     }
 
-    pub fn update_screen(&self) {}
+    pub fn update_screen(&mut self, emulator: &mut Chip8) {
+        let bg_r: u8 = ((display::BG_COLOR >> 24) & 0xFF) as u8;
+        let bg_g: u8 = ((display::BG_COLOR >> 16) & 0xFF) as u8;
+        let bg_b: u8 = ((display::BG_COLOR >> 8) & 0xFF) as u8;
+        let bg_a: u8 = (display::BG_COLOR & 0xFF) as u8;
+
+        let fg_r: u8 = ((display::FG_COLOR >> 24) & 0xFF) as u8;
+        let fg_g: u8 = ((display::FG_COLOR >> 16) & 0xFF) as u8;
+        let fg_b: u8 = ((display::FG_COLOR >> 8) & 0xFF) as u8;
+        let fg_a: u8 = (display::FG_COLOR & 0xFF) as u8;
+
+        let fg_color = Color::RGBA(fg_r, fg_g, fg_b, fg_a);
+        let bg_color = Color::RGBA(bg_r, bg_g, bg_b, bg_a);
+
+        let video_buffer = emulator.get_video_buffer();
+
+        for i in 0..video_buffer.len() {
+            // extracting x and y coords with correct scale factor
+            let x = (i % display::DISPLAY_WIDTH) as i32 * display::SCALE_FACTOR as i32;
+            let y = (i / display::DISPLAY_WIDTH) as i32 * display::SCALE_FACTOR as i32;
+
+            let rect = Rect::new(x, y, display::SCALE_FACTOR, display::SCALE_FACTOR);
+
+            if video_buffer[i] == 1 {
+                self.canvas.set_draw_color(fg_color);
+            } else {
+                self.canvas.set_draw_color(bg_color);
+            }
+
+            self.canvas
+                .fill_rect(rect)
+                .expect("failed to fill rectangle")
+        }
+
+        self.canvas.present();
+    }
 }

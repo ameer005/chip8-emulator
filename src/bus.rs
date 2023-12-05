@@ -38,6 +38,9 @@ impl Bus {
         self.display.write_pixel(index, value);
     }
 
+    pub fn display_get_buffer(&self) -> &[u32] {
+        self.display.get_buffer()
+    }
     // Keyboard
     pub fn is_key_pressed(&self, index: usize) -> bool {
         self.keypad[index]
