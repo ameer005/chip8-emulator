@@ -54,6 +54,10 @@ impl CPU {
         self.program_counter += 2;
     }
 
+    pub fn decrease_pc(&mut self) {
+        self.program_counter -= 2;
+    }
+
     /// V registers
     pub fn set_vreg_value(&mut self, index: u8, val: u8) {
         self.v_regs[index as usize] = val;
@@ -75,6 +79,14 @@ impl CPU {
     pub fn set_sound_timer(&mut self, value: u8) {
         self.sound_reg = value;
     }
+
+    pub fn decrease_delay_timer(&mut self) {
+        self.delay_reg -= 1;
+    }
+
+    pub fn decrease_sound_timer(&mut self) {
+        self.sound_reg -= 1;
+    }
 }
 
 /// Access to read only fields
@@ -93,5 +105,9 @@ impl CPU {
 
     pub fn get_delay_timer(&self) -> u8 {
         self.delay_reg
+    }
+
+    pub fn get_sound_timer(&self) -> u8 {
+        self.sound_reg
     }
 }

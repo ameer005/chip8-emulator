@@ -50,6 +50,11 @@ impl SDLHandler {
         handler
     }
 
+    // CHIP8 keypad    QWERTY
+    // 123C            1234
+    // 456D            qwer
+    // 789E            asdf
+    // A0BF            zxcv
     pub fn handle_events(&self, emulator: &mut Chip8) {
         let mut event_pump = self
             .sdl
@@ -62,7 +67,29 @@ impl SDLHandler {
 
                 Event::KeyUp {
                     keycode: Some(key), ..
-                } => {}
+                } => match key {
+                    Keycode::Num1 => emulator.bus.handle_key_press(0x1, false),
+                    Keycode::Num2 => emulator.bus.handle_key_press(0x2, false),
+                    Keycode::Num3 => emulator.bus.handle_key_press(0x3, false),
+                    Keycode::Num4 => emulator.bus.handle_key_press(0xC, false),
+
+                    Keycode::Q => emulator.bus.handle_key_press(0x4, false),
+                    Keycode::W => emulator.bus.handle_key_press(0x5, false),
+                    Keycode::E => emulator.bus.handle_key_press(0x6, false),
+                    Keycode::R => emulator.bus.handle_key_press(0xD, false),
+
+                    Keycode::A => emulator.bus.handle_key_press(0x7, false),
+                    Keycode::S => emulator.bus.handle_key_press(0x8, false),
+                    Keycode::D => emulator.bus.handle_key_press(0x9, false),
+                    Keycode::F => emulator.bus.handle_key_press(0xE, false),
+
+                    Keycode::Z => emulator.bus.handle_key_press(0xA, false),
+                    Keycode::X => emulator.bus.handle_key_press(0x0, false),
+                    Keycode::C => emulator.bus.handle_key_press(0xB, false),
+                    Keycode::V => emulator.bus.handle_key_press(0xF, false),
+
+                    _ => {}
+                },
 
                 Event::KeyDown {
                     keycode: Some(key), ..
@@ -79,7 +106,27 @@ impl SDLHandler {
                         }
                     }
 
-                    _ => println!("unknown key"),
+                    Keycode::Num1 => emulator.bus.handle_key_press(0x1, true),
+                    Keycode::Num2 => emulator.bus.handle_key_press(0x2, true),
+                    Keycode::Num3 => emulator.bus.handle_key_press(0x3, true),
+                    Keycode::Num4 => emulator.bus.handle_key_press(0xC, true),
+
+                    Keycode::Q => emulator.bus.handle_key_press(0x4, true),
+                    Keycode::W => emulator.bus.handle_key_press(0x5, true),
+                    Keycode::E => emulator.bus.handle_key_press(0x6, true),
+                    Keycode::R => emulator.bus.handle_key_press(0xD, true),
+
+                    Keycode::A => emulator.bus.handle_key_press(0x7, true),
+                    Keycode::S => emulator.bus.handle_key_press(0x8, true),
+                    Keycode::D => emulator.bus.handle_key_press(0x9, true),
+                    Keycode::F => emulator.bus.handle_key_press(0xE, true),
+
+                    Keycode::Z => emulator.bus.handle_key_press(0xA, true),
+                    Keycode::X => emulator.bus.handle_key_press(0x0, true),
+                    Keycode::C => emulator.bus.handle_key_press(0xB, true),
+                    Keycode::V => emulator.bus.handle_key_press(0xF, true),
+
+                    _ => {}
                 },
 
                 _ => {}

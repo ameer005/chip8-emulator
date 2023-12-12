@@ -1,6 +1,8 @@
 use crate::{bus, cpu, display};
 use rand::prelude::*;
 
+pub const INSTRUCTIONS_PER_SECOND: u32 = 500;
+
 #[derive(Eq, PartialEq)]
 pub enum EmulatorState {
     Quit,
@@ -9,8 +11,8 @@ pub enum EmulatorState {
 }
 
 pub struct Chip8 {
-    cpu: cpu::CPU,
-    bus: bus::Bus,
+    pub cpu: cpu::CPU,
+    pub bus: bus::Bus,
     pub state: EmulatorState,
 }
 
@@ -23,6 +25,16 @@ impl Chip8 {
         }
     }
 
+    pub fn run(&mut self) {
+        let first_byte = self.bus.ram_read_byte(self.cpu.get_pc()) as u16;
+        let second_byte = self.bus.ram_read_byte(self.cpu.get_pc() + 1) as u16;
+
+        let opcode = (first_byte << 8) | second_byte;
+
+        self.cpu.increment_pc();
+        self.exec_instructions(opcode);
+    }
+
     pub fn load_rom(&mut self, data: Vec<u8>) {
         let offset = cpu::EXECUTION_INDEX;
 
@@ -33,6 +45,16 @@ impl Chip8 {
         // self.bus.ram_print()
     }
 
+    pub fn update_timer(&mut self) {
+        if (self.cpu.get_delay_timer() > 0) {
+            self.cpu.decrease_delay_timer();
+        }
+
+        if (self.cpu.get_sound_timer() > 0) {
+            self.cpu.decrease_sound_timer();
+        }
+    }
+
     pub fn change_state(&mut self, state: EmulatorState) {
         self.state = state
     }
@@ -41,27 +63,21 @@ impl Chip8 {
         self.bus.display_get_buffer()
     }
 
-    pub fn run(&mut self) {
-        let first_byte = self.bus.ram_read_byte(self.cpu.get_pc()) as u16;
-        let second_byte = self.bus.ram_read_byte(self.cpu.get_pc() + 1) as u16;
-
-        let opcode = (first_byte << 8) | second_byte;
-
-        // println!("{}", format!("{:X}", opcode));
-        self.cpu.increment_pc();
-
-        self.exec_instructions(opcode);
-    }
-
     pub fn exec_instructions(&mut self, opcode: u16) {
         let left_nibble = (opcode & 0xF000) >> 12;
 
         match left_nibble {
             0x0 => match opcode {
                 /// Clearing display
-                0x00E0 => self.bus.display_clear(),
+                0x00E0 => {
+                    debug_opcodes(&opcode, "00E0", "Clear the display.");
+
+                    self.bus.display_clear()
+                }
 
                 0x00EE => {
+                    debug_opcodes(&opcode, "00EE", "Return from a subroutine.");
+
                     let sp = self.cpu.get_sp();
                     let stack_value = self.cpu.get_stack_value(sp);
                     self.cpu.update_pc(stack_value);
@@ -73,12 +89,20 @@ impl Chip8 {
             /// 1nnn
             /// set program couter to lowest 12 bit of opcode
             0x1 => {
+                debug_opcodes(
+                    &opcode,
+                    "1nnn",
+                    "set program couter to lowest 12 bit of opcode",
+                );
+
                 let addr = opcode & 0x0FFF;
                 self.cpu.update_pc(addr);
             }
 
             /// 2nnn
             0x2 => {
+                debug_opcodes(&opcode, "2nnn", "Call subroutine at nnn.");
+
                 let addr = opcode & 0x0FFF;
 
                 self.cpu.increase_sp();
@@ -90,6 +114,8 @@ impl Chip8 {
 
             /// 3xkk
             0x3 => {
+                debug_opcodes(&opcode, "3xkk", "Skip next instruction if Vx = kk.");
+
                 let vx = (opcode & 0x0F00) >> 8;
                 let kk = opcode & 0x00FF;
 
@@ -100,6 +126,8 @@ impl Chip8 {
 
             /// Skip next instruction if Vx != kk.
             0x4 => {
+                debug_opcodes(&opcode, "4xkk", "Skip next instruction if Vx != kk");
+
                 let vx = (opcode & 0x0F00) >> 8;
                 let kk = opcode & 0x00FF;
 
@@ -110,6 +138,8 @@ impl Chip8 {
 
             /// Skip next instruction if Vx = Vy
             0x5 => {
+                debug_opcodes(&opcode, "5xy0", "Skip next instruction if Vx = Vy.");
+
                 let vx = (opcode & 0x0F00) >> 8;
                 let vy = (opcode & 0x00F0) >> 4;
 
@@ -120,6 +150,8 @@ impl Chip8 {
 
             ///Set Vx = kk
             0x6 => {
+                debug_opcodes(&opcode, "6xkk", "Set Vx = kk.");
+
                 let vx = (opcode & 0x0F00) >> 8;
                 let value = opcode & 0x00ff;
 
@@ -128,20 +160,26 @@ impl Chip8 {
 
             ///Set Vx = Vx + kk.
             0x7 => {
+                debug_opcodes(&opcode, "7xkk", "Set Vx = Vx + kk.");
+
                 let vx = ((opcode & 0x0F00) >> 8) as u8;
                 let value = opcode & 0x00ff;
 
                 self.cpu
-                    .set_vreg_value(vx, self.cpu.get_vreg_value(vx) + value as u8)
+                    .set_vreg_value(vx, self.cpu.get_vreg_value(vx).wrapping_add(value as u8))
             }
 
             /// Nested
             0x8 => {
+                debug_opcodes(&opcode, "8xy0", "Set Vx = Vy.");
+
                 let op8 = opcode & 0x000F;
 
                 match op8 {
                     /// Set Vx = Vy.
                     0x0 => {
+                        debug_opcodes(&opcode, "8xy0", "Set Vx = Vy.");
+
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
                         let vy = ((opcode & 0x00F0) >> 4) as u8;
 
@@ -150,6 +188,8 @@ impl Chip8 {
 
                     // Set Vx = Vx OR Vy
                     0x1 => {
+                        debug_opcodes(&opcode, "8xy1", "Set Vx = Vx OR Vy");
+
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
                         let vy = ((opcode & 0x00F0) >> 4) as u8;
 
@@ -160,6 +200,8 @@ impl Chip8 {
 
                     /// Set Vx = Vx AND Vy.
                     0x2 => {
+                        debug_opcodes(&opcode, "8xy2", "Set Vx = Vx AND Vy");
+
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
                         let vy = ((opcode & 0x00F0) >> 4) as u8;
 
@@ -170,6 +212,8 @@ impl Chip8 {
 
                     /// Set Vx = Vx XOR Vy.
                     0x3 => {
+                        debug_opcodes(&opcode, "8xy3", "Set Vx = Vx XOR Vy.");
+
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
                         let vy = ((opcode & 0x00F0) >> 4) as u8;
 
@@ -179,7 +223,11 @@ impl Chip8 {
                     }
 
                     ///Set Vx = Vx + Vy, set VF = carry.
+                    ///
+                    // TODO not correct
                     0x4 => {
+                        debug_opcodes(&opcode, "8xy4", "Set Vx = Vx + Vy, set VF = carry.");
+
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
                         let vy = ((opcode & 0x00F0) >> 4) as u8;
 
@@ -193,7 +241,10 @@ impl Chip8 {
                     }
 
                     // Set Vx = Vx - Vy, set VF = NOT borrow.
+                    // TODO not correct
                     0x5 => {
+                        debug_opcodes(&opcode, "8xy5", "Set Vx = Vx - Vy, set VF = NOT borrow");
+
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
                         let vy = ((opcode & 0x00F0) >> 4) as u8;
 
@@ -214,7 +265,9 @@ impl Chip8 {
                     }
 
                     //Set Vx = Vx SHR 1.
+                    // TODO not correct
                     0x6 => {
+                        debug_opcodes(&opcode, "8xy6", "Set Vx = Vx SHR 1.");
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
 
                         // setting lowest bit of vx to OxF
@@ -226,8 +279,10 @@ impl Chip8 {
                             .set_vreg_value(vx, self.cpu.get_vreg_value(vx) >> 1);
                     }
 
-                    // Set Vx = Vy - Vx, set VF = NOT borrow.
+                    /// Set Vx = Vy - Vx, set VF = NOT borrow.
+                    // TODO not correct
                     0x7 => {
+                        debug_opcodes(&opcode, "8xy7", "Set Vx = Vy - Vx, set VF = NOT borrow.");
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
                         let vy = ((opcode & 0x00F0) >> 4) as u8;
 
@@ -248,7 +303,10 @@ impl Chip8 {
                     }
 
                     // Set Vx = Vx SHL 1.
+                    // TODO not correct
                     0xE => {
+                        debug_opcodes(&opcode, "8xyE", "Set Vx = Vx SHL 1.");
+
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
 
                         self.cpu
@@ -264,6 +322,7 @@ impl Chip8 {
 
             /// Skip next instruction if Vx != Vy.
             0x9 => {
+                debug_opcodes(&opcode, "9xy0", "Skip next instruction if Vx != Vy.");
                 let vx = ((opcode & 0x0F00) >> 8) as u8;
                 let vy = ((opcode & 0x00F0) >> 4) as u8;
 
@@ -273,16 +332,23 @@ impl Chip8 {
             }
 
             /// Set I = nnn.
-            0xA => self.cpu.set_i_reg_value(opcode & 0x0FFF),
+            0xA => {
+                debug_opcodes(&opcode, "Annn", "Set I = nnn.");
+                self.cpu.set_i_reg_value(opcode & 0x0FFF)
+            }
 
             /// Jump to location nnn + V0.
             0xB => {
+                debug_opcodes(&opcode, "Bnnn", "Jump to location nnn + V0.");
+
                 let addr = self.cpu.get_vreg_value(0) as u16 + (opcode & 0x0FFF);
                 self.cpu.update_pc(addr);
             }
 
             /// Set Vx = random byte AND kk.
             0xC => {
+                debug_opcodes(&opcode, "Cxkk", "Set Vx = random byte AND kk");
+
                 let vx = ((opcode & 0x0F00) >> 8) as u8;
                 let value = gen_random_byte() & (opcode & 0x00FF) as u8;
 
@@ -291,6 +357,8 @@ impl Chip8 {
 
             /// Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision.
             0xD => {
+                debug_opcodes(&opcode, "Dxyn", "Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision.");
+
                 let vx = ((opcode & 0x0F00) >> 8) as u8;
                 let vy = ((opcode & 0x00F0) >> 4) as u8;
                 let nn = (opcode & 0x000F) as u8;
@@ -333,6 +401,12 @@ impl Chip8 {
                 let op_e = opcode & 0x000F;
                 match op_e {
                     0xE => {
+                        debug_opcodes(
+                            &opcode,
+                            "Ex9E",
+                            "Skip next instruction if key with the value of Vx is pressed.",
+                        );
+
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
                         let x_reg = self.cpu.get_vreg_value(vx);
 
@@ -342,6 +416,12 @@ impl Chip8 {
                     }
 
                     0x1 => {
+                        debug_opcodes(
+                            &opcode,
+                            "ExA1",
+                            "Skip next instruction if key with the value of Vx is pressed.",
+                        );
+
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
                         let x_reg = self.cpu.get_vreg_value(vx);
 
@@ -359,28 +439,53 @@ impl Chip8 {
                 match op_e {
                     /// Set Vx = delay timer value.
                     0x07 => {
+                        debug_opcodes(&opcode, "Fx07", "Set Vx = delay timer value.");
+
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
 
                         self.cpu.set_vreg_value(vx, self.cpu.get_delay_timer());
                     }
 
                     /// Wait for a key press, store the value of the key in Vx.
-                    0x0A => {}
+                    0x0A => {
+                        debug_opcodes(&opcode, "Fx0A", "unimplemented");
+                        let vx = ((opcode & 0x0F00) >> 8) as u8;
+                        let mut is_key_pressed = false;
+
+                        for i in 0..self.bus.get_keypad().len() {
+                            if self.bus.is_key_pressed(i) {
+                                self.cpu.set_vreg_value(vx, i as u8);
+                                is_key_pressed = true;
+                                break;
+                            }
+                        }
+
+                        // keeping looping until the key is pressed
+                        if !is_key_pressed {
+                            self.cpu.decrease_pc();
+                        }
+                    }
 
                     /// Set delay timer = Vx.
                     0x15 => {
+                        debug_opcodes(&opcode, "Fx15", "Set delay timer = Vx.");
+
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
                         self.cpu.set_delay_timer(self.cpu.get_vreg_value(vx));
                     }
 
                     ///Set sound timer = Vx.
                     0x18 => {
+                        debug_opcodes(&opcode, "Fx18", "Set sound timer = Vx.");
+
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
                         self.cpu.set_sound_timer(self.cpu.get_vreg_value(vx));
                     }
 
                     /// Set I = I + Vx.
                     0x1E => {
+                        debug_opcodes(&opcode, "Fx1E", "Set I = I + Vx.");
+
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
 
                         self.cpu.set_i_reg_value(
@@ -392,6 +497,8 @@ impl Chip8 {
 
                     /// Set I = location of sprite for digit Vx.
                     0x29 => {
+                        debug_opcodes(&opcode, "Fx29", "Set I = location of sprite for digit Vx");
+
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
 
                         let digit = self.cpu.get_vreg_value(vx);
@@ -402,6 +509,12 @@ impl Chip8 {
 
                     /// Store BCD representation of Vx in memory locations I, I+1, and I+2.
                     0x33 => {
+                        debug_opcodes(
+                            &opcode,
+                            "Fx33",
+                            "Store BCD representation of Vx in memory locations I, I+1, and I+2",
+                        );
+
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
                         let value = self.cpu.get_vreg_value(vx);
 
@@ -419,10 +532,16 @@ impl Chip8 {
 
                     /// Store registers V0 through Vx in memory starting at location I.
                     0x55 => {
+                        debug_opcodes(
+                            &opcode,
+                            "Fx55",
+                            "Store registers V0 through Vx in memory starting at location I.",
+                        );
+
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
                         let i_reg = self.cpu.get_i_reg_value();
 
-                        for i in 0..vx {
+                        for i in 0..=vx {
                             self.bus
                                 .ram_write_byte(i_reg + i as u16, self.cpu.get_vreg_value(i));
                         }
@@ -430,10 +549,16 @@ impl Chip8 {
 
                     /// Read registers V0 through Vx from memory starting at location I.
                     0x65 => {
+                        debug_opcodes(
+                            &opcode,
+                            "Fx65",
+                            "Read registers V0 through Vx from memory starting at location I.",
+                        );
+
                         let vx = ((opcode & 0x0F00) >> 8) as u8;
                         let i_reg = self.cpu.get_i_reg_value();
 
-                        for i in 0..vx {
+                        for i in 0..=vx {
                             self.cpu
                                 .set_vreg_value(i, self.bus.ram_read_byte(i_reg + i as u16))
                         }
@@ -451,6 +576,15 @@ impl Chip8 {
 fn gen_random_byte() -> u8 {
     let mut rng = rand::thread_rng();
     rng.gen_range(0..=255)
+}
+
+fn debug_opcodes(address: &u16, opcode: &str, desc: &str) {
+    println!(
+        "Address: {}, Opcode: {}, Desc: {}",
+        format!("{:X}", address),
+        opcode,
+        desc
+    )
 }
 
 // Test

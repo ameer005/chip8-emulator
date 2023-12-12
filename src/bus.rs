@@ -49,6 +49,10 @@ impl Bus {
     pub fn handle_key_press(&mut self, index: usize, state: bool) {
         self.keypad[index] = state;
     }
+
+    pub fn get_keypad(&self) -> &[bool; 16] {
+        &self.keypad
+    }
 }
 
 /// For printing values

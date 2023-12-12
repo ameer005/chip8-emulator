@@ -18,12 +18,10 @@ mod ram;
 mod sdlh;
 
 fn main() {
-    // create separate function to take filename as argument
-    // put some error checkers
-    let data = open_file();
-
     let mut sdl_handler = sdlh::SDLHandler::init();
     let mut chip = chip8::Chip8::init();
+
+    let data = open_file();
     chip.load_rom(data);
 
     let target_fps = 60;
@@ -40,7 +38,9 @@ fn main() {
         let mut last_frame_time = Instant::now();
 
         // Emulate CHIP8 Instructions
+        // for i in 0..(chip8::INSTRUCTIONS_PER_SECOND / 60) {
         chip.run();
+        // }
 
         // Delay
         let elapsed_time = Instant::now().duration_since(last_frame_time);
@@ -49,10 +49,9 @@ fn main() {
         }
 
         // Update window with changes
+        chip.update_timer();
         sdl_handler.update_screen(&mut chip);
     }
-
-    println!("fuck you")
 }
 
 fn open_file() -> Vec<u8> {
