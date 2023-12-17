@@ -38,9 +38,9 @@ fn main() {
         let mut last_frame_time = Instant::now();
 
         // Emulate CHIP8 Instructions
-        // for i in 0..(chip8::INSTRUCTIONS_PER_SECOND / 60) {
-        chip.run();
-        // }
+        for i in 0..(chip8::INSTRUCTIONS_PER_SECOND / 60) {
+            chip.run();
+        }
 
         // Delay
         let elapsed_time = Instant::now().duration_since(last_frame_time);
